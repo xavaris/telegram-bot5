@@ -1,7 +1,5 @@
 import os
-import asyncio
 from telegram import (
-    Bot,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Update
@@ -16,11 +14,12 @@ from telegram.ext import (
 # ================== VARIABLES ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 VENDORS_RAW = os.getenv("VENDORS")
+TOPICS_RAW = os.getenv("TOPICS")
 
 GROUP_ID = -1003569725744
-TOPICS = [7, 8]
-
 ADMIN_VERIFY_ID = 8482440165  # burwusovy
+
+VERIFY_LINK = "https://t.me/BotDoWeryfikacjiBot?start=verify"
 
 # ================== LOAD VENDORS ==================
 def load_vendors():
@@ -32,28 +31,39 @@ def load_vendors():
         if ":" in pair:
             name, username = pair.split(":", 1)
             vendors[name.strip()] = username.strip()
-
     return vendors
 
+# ================== LOAD TOPICS ==================
+def load_topics():
+    if not TOPICS_RAW:
+        return []
+    return [int(x.strip()) for x in TOPICS_RAW.split(",")]
+
 VENDORS = load_vendors()
+TOPICS = load_topics()
 
 # ================== KEYBOARD ==================
 def build_keyboard():
     buttons = []
+    row = []
 
     for name, username in VENDORS.items():
-        buttons.append([
+        row.append(
             InlineKeyboardButton(
                 f"✉️ {name}",
                 url=f"https://t.me/{username}"
             )
-        ])
+        )
+
+        if len(row) == 2:   # dwa w jednym wierszu = większe kafelki
+            buttons.append(row)
+            row = []
+
+    if row:
+        buttons.append(row)
 
     buttons.append([
-        InlineKeyboardButton(
-            "✅ Zweryfikuj się",
-            url="https://t.me/BotDoWeryfikacjiBot?start=verify"
-        )
+        InlineKeyboardButton("✅ Zweryfikuj się", url=VERIFY_LINK)
     ])
 
     return InlineKeyboardMarkup(buttons)
@@ -72,24 +82,18 @@ Chcesz zostać vendorem? Kliknij przycisk poniżej.
 """
 
 # ================== SEND INFO ==================
-async def send_info(bot: Bot):
+async def send_info(context: ContextTypes.DEFAULT_TYPE):
     keyboard = build_keyboard()
 
     for topic in TOPICS:
-        await bot.send_message(
+        await context.bot.send_message(
             chat_id=GROUP_ID,
             message_thread_id=topic,
             text=MESSAGE_TEXT,
             reply_markup=keyboard
         )
 
-# ================== SCHEDULER ==================
-async def scheduler(bot: Bot):
-    while True:
-        await send_info(bot)
-        await asyncio.sleep(60 * 60 * 12)
-
-# ================== START HANDLER ==================
+# ================== /START ==================
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
@@ -104,12 +108,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_photo"] = True
     else:
         await update.message.reply_text(
-            "Witaj 👋\n"
-            "Jeśli chcesz zostać vendorem, kliknij w grupie przycisk "
-            "„Zweryfikuj się”."
+            "Witaj 👋\nJeśli chcesz zostać vendorem kliknij w grupie „Zweryfikuj się”."
         )
 
-# ================== PHOTO HANDLER ==================
+# ================== PHOTO ==================
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get("awaiting_photo"):
         return
@@ -118,32 +120,27 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     username = f"@{user.username}" if user.username else user.first_name
 
-    caption = f"📥 NOWA WERYFIKACJA\n👤 {username}"
-
     await context.bot.send_photo(
         chat_id=ADMIN_VERIFY_ID,
         photo=photo.file_id,
-        caption=caption
+        caption=f"📥 NOWA WERYFIKACJA\n👤 {username}"
     )
 
     await update.message.reply_text("✅ Zgłoszenie wysłane do administracji.")
     context.user_data["awaiting_photo"] = False
 
 # ================== MAIN ==================
-async def main():
+def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    bot = app.bot
 
     app.add_handler(MessageHandler(filters.Regex("^/start"), start_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    asyncio.create_task(scheduler(bot))
+    app.job_queue.run_repeating(send_info, interval=60*60*12, first=10)
 
     print("LEGIT VENDOR BOT STARTED")
-    await app.initialize()
-    await app.start()
-    await app.idle()
+    app.run_polling()
 
 # ================== RUN ==================
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
