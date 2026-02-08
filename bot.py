@@ -8,8 +8,8 @@ from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filte
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 VENDORS_RAW = os.getenv("VENDORS")
 
-TOPIC_7 = int(os.getenv("TOPIC_AUTO"))   # 7
-TOPIC_8 = int(os.getenv("TOPIC_WTB"))    # 8
+TOPIC_7 = int(os.getenv("TOPIC_AUTO"))
+TOPIC_8 = int(os.getenv("TOPIC_WTB"))
 
 COOLDOWN_7 = int(os.getenv("COOLDOWN_TOPIC_7"))
 COOLDOWN_8 = int(os.getenv("COOLDOWN_TOPIC_8"))
@@ -32,11 +32,15 @@ VENDORS = load_vendors()
 # ================= KEYBOARD =================
 def build_keyboard():
     rows, row = [], []
+
     for name, username in VENDORS.items():
-        row.append(InlineKeyboardButton(f"✉️ {name}", url=f"https://t.me/{username}"))
+        row.append(
+            InlineKeyboardButton(f"✉️ {name}", url=f"https://t.me/{username}")
+        )
         if len(row) == 2:
             rows.append(row)
             row = []
+
     if row:
         rows.append(row)
 
