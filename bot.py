@@ -8,11 +8,11 @@ from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filte
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 VENDORS_RAW = os.getenv("VENDORS")
 
-TOPIC_AUTO = int(os.getenv("TOPIC_AUTO"))
-TOPIC_WTB = int(os.getenv("TOPIC_WTB"))
+TOPIC_7 = int(os.getenv("TOPIC_AUTO"))   # 7
+TOPIC_8 = int(os.getenv("TOPIC_WTB"))    # 8
 
-COOLDOWN_TOPIC_7 = int(os.getenv("COOLDOWN_TOPIC_7"))
-COOLDOWN_TOPIC_8 = int(os.getenv("COOLDOWN_TOPIC_8"))
+COOLDOWN_7 = int(os.getenv("COOLDOWN_TOPIC_7"))
+COOLDOWN_8 = int(os.getenv("COOLDOWN_TOPIC_8"))
 
 GROUP_ID = -1003569725744
 ADMIN_VERIFY_ID = 8482440165
@@ -22,8 +22,6 @@ VERIFY_LINK = "https://t.me/BotDoWeryfikacjiBot?start=verify"
 # ================= LOAD VENDORS =================
 def load_vendors():
     vendors = {}
-    if not VENDORS_RAW:
-        return vendors
     for pair in VENDORS_RAW.split(","):
         name, username = pair.split(":")
         vendors[name.strip()] = username.strip()
@@ -33,28 +31,20 @@ VENDORS = load_vendors()
 
 # ================= KEYBOARD =================
 def build_keyboard():
-    rows = []
-    row = []
-
+    rows, row = [], []
     for name, username in VENDORS.items():
-        row.append(
-            InlineKeyboardButton(f"✉️ {name}", url=f"https://t.me/{username}")
-        )
+        row.append(InlineKeyboardButton(f"✉️ {name}", url=f"https://t.me/{username}"))
         if len(row) == 2:
             rows.append(row)
             row = []
-
     if row:
         rows.append(row)
 
-    rows.append([
-        InlineKeyboardButton("✅ Zweryfikuj się", url=VERIFY_LINK)
-    ])
-
+    rows.append([InlineKeyboardButton("✅ Zweryfikuj się", url=VERIFY_LINK)])
     return InlineKeyboardMarkup(rows)
 
 # ================= MESSAGE =================
-MESSAGE_TEXT = """
+TEXT = """
 🛡️🔥 T¥LKØ L€G¡TN€ Z@KUP¥ 🔥🛡️
 
 Kupuj tylko u sprawdzonych vendorów z listy poniżej.
@@ -64,72 +54,53 @@ Nie odpowiadamy za transakcje poza nimi.
 """
 
 # ================= MEMORY =================
-last7_time = 0
-last8_time = 0
 last7_msg = None
 last8_msg = None
+last7_time = 0
+last8_time = 0
 
-# ================= LOOP TOPIC 7 =================
-async def topic7_loop(app):
-    global last7_time, last7_msg
+# ================= LOOP =================
+async def sender_loop(app):
+    global last7_msg, last8_msg, last7_time, last8_time
 
     await asyncio.sleep(10)
 
     while True:
         now = time.time()
 
-        if now - last7_time >= COOLDOWN_TOPIC_7:
-            msg = await app.bot.send_message(
-                chat_id=GROUP_ID,
-                message_thread_id=TOPIC_AUTO,
-                text=MESSAGE_TEXT,
-                reply_markup=build_keyboard()
-            )
-
+        if now - last7_time >= COOLDOWN_7:
             if last7_msg:
                 try:
                     await app.bot.delete_message(GROUP_ID, last7_msg)
                 except:
                     pass
 
-            last7_msg = msg.message_id
+            m7 = await app.bot.send_message(
+                chat_id=GROUP_ID,
+                message_thread_id=TOPIC_7,
+                text=TEXT,
+                reply_markup=build_keyboard()
+            )
+            last7_msg = m7.message_id
             last7_time = now
 
+        if now - last8_time >= COOLDOWN_8:
+            if last8_msg:
+                try:
+                    await app.bot.delete_message(GROUP_ID, last8_msg)
+                except:
+                    pass
+
+            m8 = await app.bot.send_message(
+                chat_id=GROUP_ID,
+                message_thread_id=TOPIC_8,
+                text=TEXT,
+                reply_markup=build_keyboard()
+            )
+            last8_msg = m8.message_id
+            last8_time = now
+
         await asyncio.sleep(30)
-
-# ================= GROUP LISTENER TOPIC 8 =================
-async def group_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global last8_time, last8_msg
-
-    if not update.message or not update.message.is_topic_message:
-        return
-
-    if update.message.from_user.is_bot:
-        return
-
-    if update.message.message_thread_id != TOPIC_WTB:
-        return
-
-    now = time.time()
-
-    if now - last8_time < COOLDOWN_TOPIC_8:
-        return
-
-    msg = await context.bot.send_message(
-        chat_id=GROUP_ID,
-        message_thread_id=TOPIC_WTB,
-        text=MESSAGE_TEXT,
-        reply_markup=build_keyboard()
-    )
-
-    if last8_msg:
-        try:
-            await context.bot.delete_message(GROUP_ID, last8_msg)
-        except:
-            pass
-
-    last8_msg = msg.message_id
-    last8_time = now
 
 # ================= /START =================
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -169,11 +140,10 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(MessageHandler(filters.ALL & filters.ChatType.GROUPS, group_listener))
     app.add_handler(MessageHandler(filters.Regex("^/start"), start_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    asyncio.get_event_loop().create_task(topic7_loop(app))
+    asyncio.get_event_loop().create_task(sender_loop(app))
 
     print("BOT STARTED")
     app.run_polling()
